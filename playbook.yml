@@ -1,0 +1,175 @@
+# LEMP/Wordpress on Ubuntu 20.04 -- run: ansible-playbook playbook.yml -i inventory -K
+---
+- hosts: prod
+  become: true
+  vars_files:
+    - vars/default.yml
+
+  tasks:
+
+    # update and upgrade
+    - name: package upgrade
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    # Install Pre-reqs
+    - name: Install Aptitude
+      apt:
+        name: aptitude
+        state: present
+        force_apt_get: yes
+
+    - name: Install server tools
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: "{{ server_tools }}"
+
+    # Install LEMP packages
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: latest
+
+    - name: Install MySQL
+      apt:
+        name: mysql-server
+        state: latest
+
+    - name: Install PyMySQL
+      apt:
+        name: python3-pymysql
+        state: latest
+
+    # PHP Extensions 
+    - name: Install PHP Extensions
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: "{{ php_modules }}"
+
+
+    # Nginx confg
+    - name: Set Nginx conf file
+      template:
+        src: "files/nginx.conf.j2"
+        dest: "/etc/nginx/sites-available/{{ http_conf }}"
+
+    - name: Enable site
+      file:
+        src: "/etc/nginx/sites-available/{{ http_conf }}"
+        dest: "/etc/nginx/sites-enabled/{{ http_conf }}"
+        state: link
+      notify: Reload Nginx
+
+    - name: Remove default site
+      file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+      notify: Reload Nginx
+
+    # mysql config
+    - name: Set mysql root password
+      mysql_user:
+        name: root
+        password: "{{ mysql_root_password }}"
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        update_password: always
+
+    - name: set .my.cnf file
+      template:
+        src: "files/my.cnf.j2"
+        dest: "/root/.my.cnf"
+        
+    - name: Remove anonymous users
+      mysql_user:
+        name: ''
+        host_all: yes
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Remove the MySQL test db
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create WP db
+      mysql_db:
+        name: "{{ mysql_db }}"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Create MySQL user for WP
+      mysql_user:
+        name: "{{ mysql_user }}"
+        password: "{{ mysql_password }}"
+        priv: "{{ mysql_db }}.*:ALL"
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+
+    # UFW config
+    - name: "UFW allow on http port {{ http_port }}"
+      ufw:
+        rule: allow
+        name: "Nginx Full"
+        state: enabled
+    
+    - name: UFW allow OpenSSH
+      ufw:
+        rule: limit
+        name: OpenSSH
+        state: enabled
+
+    # WP install and config
+    - name: create www/wp directory
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        mode: 755
+
+    - name: Download and install latest WP
+      unarchive:
+        src: https://wordpress.org/latest.tar.gz
+        dest: "/var/www/{{ http_host }}"
+        remote_src: yes
+        creates: "/var/www/{{ http_host }}/wordpress"
+
+    - name: Set ownership
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        recurse: yes
+        owner: www-data
+        group: www-data
+
+    - name: Set permission for dirs
+      shell: "/usr/bin/find /var/www/{{ http_host }}/wordpress -type d -exec chmod 750 {} \\;"
+
+    - name: Set permission for files
+      shell: "/usr/bin/find /var/www/{{ http_host }}/wordpress -type f -exec chmod 640 {} \\;"
+
+    - name: Set up wp-config
+      template:
+        src: "files/wp-config.php.j2"
+        dest: "/var/www/{{ http_host }}/wordpress/wp-config.php"
+
+    # Set php info page - not needed in wp config
+    # - name: Set PHP info page
+    #   template:
+    #     src: "files/info.php.j2"
+    #     dest: "/var/www/html/info.php"
+
+  # Handlers
+  handlers:
+    - name: Reload Nginx
+      service:
+        name: nginx
+        state: reloaded
+
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted

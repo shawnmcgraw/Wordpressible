@@ -1,0 +1,13 @@
+---
+http_host: "example.com"
+http_conf: "example.com.conf"
+http_port: "80"
+
+server_tools: [ 'net-tools', 'curl', 'git', 'vim' ]
+php_modules: [ 'php-curl', 'php-gd', 'php-mbstring', 'php-xml', 'php-xmlrpc', 'php-soap', 'php-intl', 'php-zip', 'php-fpm', 'php-mysql', 'php-common', 'php-cli', 'php-ldap', 'php-imagick']
+
+
+mysql_root_password: "asdfqwe123!@#!@#"
+mysql_db: "wordpress"
+mysql_user: "shawn"
+mysql_password: "asdfqwe123!@#!@#"

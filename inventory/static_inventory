@@ -1,0 +1,6 @@
+
+[prod]
+prod1.example.com   ansible_user=shawn
+
+[dev]
+test1.example.test       ansible_user=shawn
